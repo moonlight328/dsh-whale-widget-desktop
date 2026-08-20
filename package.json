@@ -1,0 +1,43 @@
+{
+  "name": "dsh-whale-desktop",
+  "version": "1.0.0",
+  "description": "DSH 小鲸鱼余额挂件 —— 独立常驻版（无需 DSH，点击切换余额/当日消耗）",
+  "main": "main.js",
+  "author": "Yetanija for master",
+  "license": "MIT",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --win portable"
+  },
+  "build": {
+    "appId": "com.dsh.whale-desktop",
+    "productName": "DSH Whale Widget",
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "renderer/**/*"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "build/icon.ico"
+    },
+    "portable": {
+      "artifactName": "DSH-Whale-Widget.exe"
+    }
+  },
+  "devDependencies": {
+    "electron": "^43.4.1",
+    "electron-builder": "^26.15.3"
+  }
+}

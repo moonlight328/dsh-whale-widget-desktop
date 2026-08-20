@@ -1,0 +1,8 @@
+# 依赖与构建产物
+node_modules/
+dist/
+
+# 日志与系统文件
+*.log
+.DS_Store
+Thumbs.db
