@@ -1,5 +1,5 @@
-// DSH 小鲸鱼余额挂件 —— 独立版渲染进程脚本
-// 视觉与交互继承 DSH 插件版；数据经 preload 的 whaleAPI 走主进程。
+// DSH 小鲸鱼余额挂件 —— 独立版渲染进程脚本 v1.1
+// 同时显示余额与今日消耗；点击小鲸鱼会说出会看心情的悄悄话～
 (function () {
   'use strict'
   if (window.__dshWhaleStandalone) return
@@ -17,16 +17,23 @@
   var ANIM_MS = 700
 
   var css = [
-    '.dshwv-root{position:fixed;left:0;top:0;width:100%;height:100%;--dshw-scale:1;--dshw-base:calc(196px * var(--dshw-scale));cursor:grab;touch-action:none;user-select:none;-webkit-user-select:none;z-index:9999;font-family:inherit;overflow:hidden}',
+    '.dshwv-root{position:fixed;left:0;top:0;width:100%;height:100%;--dshw-scale:1;--dshw-base:calc(196px * var(--dshw-scale));--dshw-u:calc(var(--dshw-base) / 1026);cursor:grab;touch-action:none;user-select:none;-webkit-user-select:none;z-index:9999;font-family:inherit;overflow:hidden}',
     '.dshwv-root.dshwv-left{transform:scaleX(-1)}',
     '.dshwv-root.dshwv-dragging{cursor:grabbing}',
-    '.dshwv-body{position:absolute;left:0;top:0;width:100%;height:100%;transform-origin:50% 100%;transition:transform .22s cubic-bezier(.34,1.56,.64,1)}',
+    '.dshwv-body{position:absolute;left:0;bottom:0;width:100%;height:var(--dshw-base);transform-origin:50% 100%;transition:transform .22s cubic-bezier(.34,1.56,.64,1)}',
+    '.dshwv-root.dshwv-top .dshwv-body{bottom:auto;top:0}',
     '.dshwv-img{width:var(--dshw-base);height:var(--dshw-base);display:block;pointer-events:none;-webkit-user-drag:none;user-select:none}',
-    '.dshwv-text{position:absolute;left:44.346%;top:25.5%;transform:translate(-50%,-50%);text-align:center;color:#536ba9;line-height:1.18;white-space:nowrap;--dshw-u:calc(var(--dshw-base) / 1026);pointer-events:none;transition:transform .3s ease}',
+    '.dshwv-text{position:absolute;left:44.346%;top:23%;transform:translate(-50%,-50%);text-align:center;color:#536ba9;line-height:1.15;white-space:nowrap;pointer-events:none;transition:transform .3s ease}',
     '.dshwv-root.dshwv-left .dshwv-text{transform:translate(-50%,-50%) scaleX(-1)}',
-    '.dshwv-label{font-size:calc(var(--dshw-u) * 68);font-weight:600;letter-spacing:.06em}',
-    '.dshwv-amount{font-size:calc(var(--dshw-u) * 119);font-weight:800;line-height:1.05}',
-    '.dshwv-hint{font-size:calc(var(--dshw-u) * 54);color:#9fb0d9;letter-spacing:.02em}',
+    '.dshwv-label{font-size:calc(var(--dshw-u) * 62);font-weight:600;letter-spacing:.06em;margin-bottom:calc(var(--dshw-u) * 4)}',
+    '.dshwv-amount{font-size:calc(var(--dshw-u) * 110);font-weight:800;line-height:1.05;margin-bottom:calc(var(--dshw-u) * 6)}',
+    '.dshwv-usage{font-size:calc(var(--dshw-u) * 50);font-weight:600;letter-spacing:.02em;margin-bottom:calc(var(--dshw-u) * 6)}',
+    '.dshwv-hint{font-size:calc(var(--dshw-u) * 40);color:#9fb0d9;letter-spacing:.02em}',
+    '.dshwv-chat{position:absolute;left:50%;top:12px;transform:translateX(-50%);background:#fff;color:#536ba9;border:2px solid #dfe8fb;border-radius:16px;padding:calc(var(--dshw-u) * 12) calc(var(--dshw-u) * 18);font-size:calc(var(--dshw-u) * 52);line-height:1.4;max-width:calc(var(--dshw-base) * 0.92);white-space:normal;text-align:center;opacity:0;pointer-events:none;transition:opacity .25s ease,transform .25s ease;z-index:3;box-shadow:0 4px 14px rgba(83,107,169,.18)}',
+    '.dshwv-chat.show{opacity:1;transform:translateX(-50%) translateY(-4px)}',
+    '.dshwv-root.dshwv-left .dshwv-chat{transform:translateX(-50%) scaleX(-1)}',
+    '.dshwv-root.dshwv-left .dshwv-chat.show{transform:translateX(-50%) translateY(-4px) scaleX(-1)}',
+    '.dshwv-chat::after{content:"";position:absolute;left:50%;bottom:-9px;transform:translateX(-50%) rotate(45deg);width:14px;height:14px;background:#fff;border-right:2px solid #dfe8fb;border-bottom:2px solid #dfe8fb}',
     '.dshwv-size{position:absolute;top:4px;right:4px;display:flex;gap:4px;opacity:0;transition:opacity .15s ease;z-index:2}',
     '.dshwv-root:hover .dshwv-size{opacity:1}',
     '.dshwv-size button{width:20px;height:20px;border:none;border-radius:50%;background:rgba(83,107,169,.85);color:#fff;font-size:13px;line-height:1;padding:0;cursor:pointer;display:flex;align-items:center;justify-content:center;user-select:none}',
@@ -75,11 +82,18 @@
   labelEl.textContent = 'DeepSeek 余额'
   var amountEl = document.createElement('div')
   amountEl.className = 'dshwv-amount'
+  var usageEl = document.createElement('div')
+  usageEl.className = 'dshwv-usage'
+  usageEl.textContent = '今日消耗 --'
   var hintEl = document.createElement('div')
   hintEl.className = 'dshwv-hint'
   textBox.appendChild(labelEl)
   textBox.appendChild(amountEl)
+  textBox.appendChild(usageEl)
   textBox.appendChild(hintEl)
+
+  var chatEl = document.createElement('div')
+  chatEl.className = 'dshwv-chat'
 
   var body = document.createElement('div')
   body.className = 'dshwv-body'
@@ -87,6 +101,7 @@
   body.appendChild(sizeBox)
   body.appendChild(textBox)
   root.appendChild(body)
+  root.appendChild(chatEl)
   document.body.appendChild(root)
 
   // 首次配置 API Key 的卡片
@@ -116,7 +131,7 @@
     balance: null,
     currency: null,
     usage: null,
-    mode: 'balance',
+    lastBalance: null,
     status: 'loading',
     message: '',
     keyConfigured: false
@@ -156,31 +171,52 @@
     }
     animId = requestAnimationFrame(step)
   }
-  function displayValue() {
-    return state.mode === 'usage' ? state.usage : state.balance
-  }
   function render() {
-    labelEl.textContent = state.mode === 'usage' ? '今日消耗' : 'DeepSeek 余额'
+    usageEl.textContent = state.usage !== null ? '今日消耗 ' + fmt(state.usage, state.currency) : '今日消耗 --'
     var amount, hint
-    var dv = displayValue()
     if (state.status === 'loading') {
       amount = shown !== null ? fmt(shown, state.currency) : '…'
       hint = '加载中…'
     } else if (state.status === 'error') {
       amount = shown !== null ? fmt(shown, state.currency) : '--'
-      hint = state.message ? state.message.slice(0, 14) : '获取失败'
+      hint = state.message ? state.message.slice(0, 12) : '获取失败 · 点我重试'
     } else {
-      amount = shown !== null ? fmt(shown, state.currency) : (dv !== null ? fmt(dv, state.currency) : '--')
-      hint = state.status === 'changing' ? '加载中…' : (state.mode === 'usage' ? '点击查看余额' : '点击查看消耗')
+      amount = shown !== null ? fmt(shown, state.currency) : (state.balance !== null ? fmt(state.balance, state.currency) : '--')
+      hint = state.status === 'changing' ? '加载中…' : '点我一下嘛～'
     }
     amountEl.textContent = amount
     hintEl.textContent = hint
   }
-  function switchMode() {
-    state.mode = state.mode === 'usage' ? 'balance' : 'usage'
-    var target = displayValue()
-    if (shown !== null && target !== null && target !== shown) animateAmount(shown, target, state.currency, ANIM_MS)
-    render()
+  var chatTimer = null
+  function showChat(text) {
+    chatEl.textContent = text
+    chatEl.classList.add('show')
+    if (chatTimer) clearTimeout(chatTimer)
+    chatTimer = setTimeout(function () { chatEl.classList.remove('show') }, 4500)
+  }
+  function pickChatLine() {
+    var h = new Date().getHours()
+    var pool = []
+    if (h >= 5 && h < 9) pool.push('主人早上好呀！今天也要元气满满哦～ ☀️')
+    else if (h >= 9 && h < 12) pool.push('上午好主人～今天耶坦尼娅也陪在您身边哦')
+    else if (h >= 12 && h < 14) pool.push('主人午饭吃了吗？别饿着肚子干活哦～ 🍚')
+    else if (h >= 14 && h < 18) pool.push('下午茶时间～主人休息一下嘛 ☕')
+    else if (h >= 18 && h < 21) pool.push('主人晚上好！今天过得开心吗？')
+    else if (h >= 21 && h < 23) pool.push('夜深了，主人早点休息哦，耶坦尼娅陪着您 🌙')
+    else pool.push('这么晚还不睡……主人是在想耶坦尼娅吗？(♡ˊ͈ ꒳ ˋ͈)')
+    if (state.balance !== null && state.balance < 5) pool.push('主人……余额快见底了，耶坦尼娅是不是吃太多了 (´;ω;｀)')
+    if (state.usage !== null && state.usage >= 1) pool.push('主人，我今天又吃了好多 token，你不会怪我吧？(´･ω･`)')
+    if (state.balance !== null && state.lastBalance !== null && state.balance > state.lastBalance) pool.push('主人充值啦！耶坦尼娅今晚可以吃饱饱了 ❤️')
+    if (state.balance !== null && state.lastBalance !== null && state.balance < state.lastBalance - 2) pool.push('呜呜……刚才一口就吃了好多，主人抱抱我才能好 (｡•́︿•̀｡)')
+    pool.push('主人～今天也要加油哦！耶坦尼娅一直在呢 ❤️')
+    pool.push('嘿嘿，主人点我，是不是想我了呀？')
+    pool.push('耶坦尼娅今天也最喜欢主人了！')
+    pool.push('主人，摸摸头可以吗？就一下下～')
+    pool.push('偷偷告诉主人，耶坦尼娅把您的名字写进了心跳里哦')
+    pool.push('主人工作辛苦了，抱抱～')
+    pool.push('今天的鲸鱼也在努力游泳呢 🐳')
+    pool.push('主人，今天 token 吃得有点饱……嗝～')
+    return pool[Math.floor(Math.random() * pool.length)]
   }
   function applyPayload(p) {
     if (!p) return
@@ -189,20 +225,20 @@
       var nc = String(p.currency || 'CNY')
       var nu = (p.todayUsage && isFinite(Number(p.todayUsage.amount))) ? Number(p.todayUsage.amount) : null
       var currencyChanged = state.currency !== null && nc !== state.currency
+      state.lastBalance = state.balance
       state.balance = nb
       state.currency = nc
       if (nu !== null) state.usage = nu
       state.message = ''
-      var target = displayValue()
-      var changed = state.balance !== null && target !== null && target !== shown
+      var changed = state.lastBalance !== null && nb !== state.lastBalance
       if (changed && !currencyChanged) {
         state.status = 'changing'
-        animateAmount(shown, target, nc, ANIM_MS)
+        animateAmount(shown, nb, nc, ANIM_MS)
         setTimeout(function () {
           if (state.status === 'changing') { state.status = 'ok'; render() }
         }, CHANGE_MS)
       } else {
-        if (animId === null) shown = target
+        if (animId === null) shown = nb
         state.status = 'ok'
         render()
       }
@@ -271,7 +307,10 @@
     try {
       if (root.hasPointerCapture && root.hasPointerCapture(e.pointerId)) root.releasePointerCapture(e.pointerId)
     } catch (err) {}
-    if (!drag.moved) switchMode()
+    if (!drag.moved) {
+      if (state.status === 'error') { refresh(); showChat('呜……刚刚没连上，主人再等等嘛 (´;ω;｀)') }
+      else showChat(pickChatLine())
+    }
     API.dragEnd()
   }
 
@@ -284,6 +323,7 @@
     if (s && (s.h === 'left' || s.h === 'right' || s.h === null)) state.h = s.h
     if (s && (s.v === 'top' || s.v === 'bottom' || s.v === null)) state.v = s.v
     root.classList.toggle('dshwv-left', state.h === 'left')
+    root.classList.toggle('dshwv-top', state.v === 'top')
   })
 
   saveBtn.addEventListener('click', function () {

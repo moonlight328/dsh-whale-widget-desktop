@@ -7,6 +7,7 @@ const fs = require('node:fs')
 const path = require('node:path')
 
 const BASE = 196 // 窗口基准尺寸（scale=1 时）
+const H_RATIO = 1.32 // 窗口高度比例（上方预留聊天气泡空间）
 const MIN_SCALE = 0.6
 const MAX_SCALE = 1.4
 const BALANCE_URL = 'https://api.deepseek.com/user/balance'
@@ -53,21 +54,29 @@ function readUsageRecord() {
   } catch (err) {}
   return null
 }
-function writeUsageRecord(date, startBalance, currency) {
+function writeUsageRecord(date, startBalance, currency, consumedTotal) {
   try {
     fs.mkdirSync(path.dirname(usagePath()), { recursive: true })
-    fs.writeFileSync(usagePath(), JSON.stringify({ date, startBalance, currency, updatedAt: new Date().toISOString() }), 'utf8')
+    fs.writeFileSync(usagePath(), JSON.stringify({ date, startBalance, currency, consumedTotal: consumedTotal || 0, updatedAt: new Date().toISOString() }), 'utf8')
   } catch (err) {}
 }
 function computeTodayUsage(balance, currency) {
   const today = todayStr()
   const rec = readUsageRecord()
   if (!rec || rec.date !== today) {
-    writeUsageRecord(today, balance, currency)
+    writeUsageRecord(today, balance, currency, 0)
     return { amount: 0, currency, startBalance: balance }
   }
-  const start = Number(rec.startBalance)
-  return { amount: Math.max(0, start - balance), currency, startBalance: start }
+  let consumed = typeof rec.consumedTotal === 'number' ? rec.consumedTotal : 0
+  let start = Number(rec.startBalance)
+  if (balance >= start) {
+    // 充值/到账：保留已累计消耗，重设基线
+    writeUsageRecord(today, balance, currency, consumed)
+    return { amount: consumed, currency, startBalance: balance }
+  }
+  const amount = consumed + (start - balance)
+  writeUsageRecord(today, balance, currency, amount)
+  return { amount, currency, startBalance: balance }
 }
 
 // ---- 余额拉取（与 DSH 插件版同款健壮性）----
@@ -181,16 +190,17 @@ function settleWindow() {
 function createWindow() {
   loadConfig()
   const size = Math.round(BASE * config.scale)
+  const height = Math.round(size * H_RATIO)
   const area = screen.getPrimaryDisplay().workArea
   let x = config.x
   let y = config.y
   if (typeof x !== 'number' || typeof y !== 'number' || x < area.x - 2000 || x > area.x + area.width + 2000) {
     x = area.x + area.width - size
-    y = area.y + area.height - size
+    y = area.y + area.height - height
   }
   win = new BrowserWindow({
     width: size,
-    height: size,
+    height: height,
     x: Math.round(x),
     y: Math.round(y),
     transparent: true,
@@ -258,15 +268,16 @@ ipcMain.handle('whale:setScale', (_e, arg) => {
   saveConfig()
   if (win && rect) {
     const size = Math.round(BASE * scale)
+    const height = Math.round(size * H_RATIO)
     const area = workAreaOf(rect.x + rect.w / 2, rect.y + rect.h / 2)
     let nx = rect.x
     let ny = rect.y
     if (h === 'right') nx = rect.x + rect.w - size
     else if (h !== 'left') nx = rect.x + (rect.w - size) / 2
-    if (v === 'bottom') ny = rect.y + rect.h - size
-    else if (v !== 'top') ny = rect.y + (rect.h - size) / 2
-    const clamped = clampToArea({ x: nx, y: ny, w: size, h: size }, area)
-    win.setBounds({ x: Math.round(clamped.x), y: Math.round(clamped.y), width: size, height: size })
+    if (v === 'bottom') ny = rect.y + rect.h - height
+    else if (v !== 'top') ny = rect.y + (rect.h - height) / 2
+    const clamped = clampToArea({ x: nx, y: ny, w: size, h: height }, area)
+    win.setBounds({ x: Math.round(clamped.x), y: Math.round(clamped.y), width: size, height: height })
     config.x = clamped.x
     config.y = clamped.y
     saveConfig()

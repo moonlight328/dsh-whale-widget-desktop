@@ -1,7 +1,7 @@
 {
   "name": "dsh-whale-desktop",
-  "version": "1.0.0",
-  "description": "DSH 小鲸鱼余额挂件 —— 独立常驻版（无需 DSH，点击切换余额/当日消耗）",
+  "version": "1.1.0",
+  "description": "DSH 小鲸鱼余额挂件 —— 独立常驻版（同时显示余额/当日消耗，点击会说悄悄话）",
   "main": "main.js",
   "author": "Yetanija for master",
   "license": "MIT",
